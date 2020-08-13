@@ -1,0 +1,363 @@
+---
+title: "Analyse des données: Diagnostiquer les cancers du sein - Tumeur bénigne ou maligne"
+author: Atontsa Nguemo Miradain, miradain.atontsan@gmail.com
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+  html_document:
+    toc: yes
+    toc_depth: '3'
+ # word_document:
+  #  toc:yes
+  #  toc_depth: '3'
+---
+
+<!-- En haut, compliter/supprimer selon besoin. -->
+<!-- Voir les consignes pour le projet. -->
+
+
+
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = "")
+```
+
+
+
+
+# Introduction
+
+
+L'objectif de cette analyse est de diagnostiquer les tumeurs  du sein sur les patients de l'hôpital universitaire du Wisconsin. Plus précisément, nous voulons, à partir des données d'imagerie médicales prises sur les patients, decider si une tumeur est  bénigne ou maligne.
+
+La base de donnée contient 569 patients. Les 11 variables d'étude sont:
+
+1) diagnosis: le diagnostic M pour maligne et B pour bénigne;
+2) radius_mean: le rayon moyen de la tumeur;
+3) Texture_mean: La texture moyenne. Ceci capture la variation de l'intensité du gris des pixels; 
+4) Perimeter_mean: le périmètre nucléaire approximatif;
+5) Area_mean: la surface nucléaire moyenne. On compte les pixels à l'intérieur de la cellule et sur le périmètre;
+6) Smoothness_mean: la régularité moyenne du contour nucléaire;
+7) Compactness_mean: La compacité moyenne est obtenue via le ratio périmètre/surface plus une certaine compensation;
+8) Concavity_mean:La concavité nucléaire moyenne; 
+9) Concave_points_mean: le nombre moyen de points de concavité;
+10) Symmetry_mean: La symétrie nucléaire moyenne;
+11) Fractal_dimension_mean: La dimension fractale moyenne. Cet indicateur capture le defaux d'approximation d'une cellule par un polygone. Il capture donc aussi la régularité du contour. 
+
+
+
+
+
+
+
+ 
+
+
+# Présentation des données, analyse descriptive
+
+## Données
+
+```{r}
+library(bitops)
+library(RCurl)
+UCI_data_URL <- 
+  getURL('https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.data')
+names <- c('id_number', 'diagnosis', 'radius_mean', 
+         'texture_mean', 'perimeter_mean', 'area_mean', 
+         'smoothness_mean', 'compactness_mean', 
+         'concavity_mean','concave_points_mean', 
+         'symmetry_mean', 'fractal_dimension_mean',
+         'radius_se', 'texture_se', 'perimeter_se', 
+         'area_se', 'smoothness_se', 'compactness_se', 
+         'concavity_se', 'concave_points_se', 
+         'symmetry_se', 'fractal_dimension_se', 
+         'radius_worst', 'texture_worst', 
+         'perimeter_worst', 'area_worst', 
+         'smoothness_worst', 'compactness_worst', 
+         'concavity_worst', 'concave_points_worst', 
+         'symmetry_worst', 'fractal_dimension_worst')
+breast_cancer <- read.table(textConnection(UCI_data_URL), sep = ',', col.names = names)
+
+breast_cancer$id_number <- NULL
+breast_cancer<-breast_cancer[1:11]
+```
+
+## Description des données
+
+```{r}
+dim(breast_cancer)
+str(breast_cancer)
+```
+
+Nous donnons en annexe la table sommaire des tendances centrales sur les données.
+Nous allons cependant représenter le tableau de valeurs moyennes des variables par groupe d'interêt: "M" et "B".
+
+```{r}
+table<- aggregate(breast_cancer[2:11], by=list(breast_cancer$diagnosis),FUN = mean)
+rownames(table)<- table$Group.1
+table$Group.1<- NULL
+table
+```
+
+
+# Analyse en composantes principales
+
+Pour effectuer l'ACP, nous prendrons la variable qualitative à expliquer "diagnosis" comme supplémentaire. 
+
+```{r}
+library(FactoMineR)
+res_pca<- PCA(breast_cancer, scale.unit = TRUE, ncp = 5, quali.sup = 1, graph = F)
+barplot(res_pca$eig[,"eigenvalue"], xlab = expression(alpha), ylab = expression(lambda[alpha]))
+```
+
+Nous pouvons observer sur cet histogramme que la variabilité est mieux expliqué sur le premier plan factoriel avec une attention particulière sur le premier axe factoriel qui se démarque de tous les autres. Nous allons donc visualiser et interpréter les individus sur ce plan.
+
+
+```{r}
+plot.PCA(res_pca, axes = c(1,2), choix = "ind", habillage = 1)
+```
+
+Nous Déduisons de la visualisation ci-dessus que les deux groupes ("B" et "M") occupent presque des positions différentes sur le premier axe factoriel. En effet, Les tumeurs malignes sont à droite de l'axe verticale, et les tumeurs bénignes sont à gauche. La dimension 1 caractérise donc au mieux la séparation des deux familles de tumeurs. 
+
+
+
+Nous allons maintenant nous interesser aux variables sur le premier plan factoriel.
+
+```{r}
+plot.PCA(res_pca, axes = c(1,2), choix = "var")
+```
+
+Nous pouvons faire les interprétations suivantes:
+
+a) Sur le premier axe: il n'y a pas d'opposition entre les variables. Ce qui veux dire qu'elles contribuent tous à la séparation des groupes "M" et "B" sur cet axe. On peut cependant distinguer que les variables qui contribuent le plus su cet axe, à savoir celles qui ont la plus grande corrélation (voir annexe) sont: "concave_points_mean", "concavity_mean", "perimeter_mean", "compactness_mean", "area_mean", "radius_mean".
+En lien avec le graphe des individus, on peut aussi dire que les tumeurs malignes ont les plus grande valeurs sur ces variables citées, et que les tumeur bénignes ont des valeurs plus petites.
+
+b) Le deuxième axe est celle qui oppose la régularité des tumeurs à leurs surface ou encore elle oppose la forme de la tumeur à sa grosseur. Elle oppose en effet les variables "fractal_dimension_mean", "smoothness_mean" et "symmetry_mean" aux variables "perimeter_mean", "area_mean" et "radius_mean".
+
+c) La variable "texture_mean" est moins représenté sur ce plan.
+
+
+
+
+# Analyse discriminante
+
+La représentation sur le premier plan factorielle (notamment la première dimension) nous fait remarquer qu'une classification linéaire pourrais bien être utilisée pour classifier les deux groupes "M" et "B". Pour cette raison, nous opérons dans cette section une analyse discriminante linéaire.
+```{r}
+library(MASS)
+res_lda<- lda(breast_cancer$diagnosis ~ ., data=breast_cancer[2:11], method="mle")
+
+```
+
+Les coefficients de l'analyse discriminantes sont repris en annexe. Nous pouvons cependant représenter l'histogramme des differnts groupes sur l'axe discriminante contruite par cette methode.
+```{r}
+#ldahist(data=z[,1], g=breast_cancer1$diagnosis)
+plot(res_lda )
+
+```
+
+## Qualité de la classification
+
+```{r}
+# Predicted classes
+K.predicted<- predict(object = res_lda, newdata=breast_cancer[,-1])$class
+# Table de classes réelles vs classes prédictes
+validation<-table(breast_cancer$diagnosis, K.predicted)
+validation
+#Qualité de la règle discriminante
+proportion<- sum(diag(validation))/nrow(breast_cancer)
+proportion
+```
+93.82% des patients sont correctement classés sur les deux classes. Les 6.2% d'erreurs viennent du fait que 29 tumeurs malignes et 6 tumeurs bénignes ont étés mal classés. Ceci se dégage clairement du premier plan factoriel où l'on peut observer qu'il n'y a pas un séparateur linéair parfait entre les deux groupes "M" et "B".
+
+## Sensibilité et spécificité 
+
+Pour la classification lda: La spécificité du modèle de classification est de 
+```{r}
+sensibilité<-  validation[2,2]/(validation[2,2]+validation[2,1])
+sensibilité
+
+spécificité<- validation[1,1]/(validation[1,1]+validation[1,2])
+spécificité
+```
+
+La sensibilité du modèle de classification (lda) est de l'ordre de 86,32% tandis que la spécificité du modèle de l'ordre de 98,31%. Ce qui voudrais dire en d'autres termes que le modèle est un peu plus précis pour la prédiction des tumeurs benignes que celles malignes. Cette tendance pourrais bien changer en "déplaçant' parallèlement la droite (frontière) qui sépare les deux groupes. En effet sur l'histogramme, on peut observer qu'en déplaçant cette droite de manière parallèle vers la gauche, on augmenterait la sensibilité en réduisant ainsi la spécificité.
+
+# Analyse des correspondances
+
+
+
+## Discretisation des données
+
+Nous allons utiliser la fonction cut et le kmeans pour discrediter naturellement nos 10 variables quantitatives. Dans cette discrétisation, les indexes des niveaux sont attribués de façon croissante. Par exemple: la variable discrétisée du rayon "radius.disc" aura les niveaux "radius1", "radius2", "radius3" et "radius4" classés ainsi du plus petit au plus grand.
+
+```{r}
+Kr<-kmeans(breast_cancer$radius_mean, 4)
+radius.disc<- cut(Kr$cluster, breaks =c(0,1.5,2.5,3.5,4), labels=c("radius1", "radius2", "radius3", "radius4"),include.lowest = TRUE, right = FALSE)
+
+Kt<-kmeans(breast_cancer$texture_mean,4)
+texture.disc<- cut(Kt$cluster, breaks =c(0,1.5,2.5,3.5,4), labels=c("texture1", "texture2", "texture3", "texture4"), include.lowest = TRUE, right = FALSE)
+
+Kp<-kmeans(breast_cancer$perimeter_mean,4)
+perimeter.disc<- cut(Kp$cluster, breaks =c(0,1.5,2.5,3.5,4), labels=c("perimeter1", "perimeter2", "perimeter3", "perimeter4"), include.lowest = TRUE, right = FALSE)
+
+ka<-kmeans(breast_cancer$area_mean, 5)
+area.disc<- cut(ka$cluster, breaks =c(0,1.5,2.5,3.5,4.5, 5), labels=c("area1", "area2", "area3", "area4","area5"), include.lowest = TRUE, right = FALSE)
+
+ks<-kmeans(breast_cancer$smoothness_mean, 6)
+smooth.disc<- cut(ks$cluster, breaks =c(0,1.5,2.5,3.5,4.5,5.5,6), labels=c("smooth1", "smooth2", "smooth3", "smooth4", "smooth5", "smooth6"), include.lowest = TRUE, right = FALSE)
+
+kc<-kmeans(breast_cancer$compactness_mean, 4)
+compact.disc<- cut(kc$cluster, breaks =c(0,1.5,2.5,3.5,4), labels=c("compact1", "compact2", "compact3", "compact4"), include.lowest = TRUE, right = FALSE)
+
+kcom<-kmeans(breast_cancer$concavity_mean, 4)
+concavity.disc<- cut(kcom$cluster, breaks =c(0,1.5,2.5,3.5,4), labels=c("concavity1", "concavity2", "concavity3", "concavity4"), include.lowest = TRUE, right = FALSE)
+
+kconp<-kmeans(breast_cancer$concave_points_mean, 3)
+concavePoint.disc<- cut(kconp$cluster, breaks =c(0,1.5,2.5,3), labels=c("concavePoint1", "concavePoint2", "concavePoint3"), include.lowest = TRUE, right = FALSE)
+
+ks<-kmeans(breast_cancer$symmetry_mean, 4)
+symmetry.disc<- cut(ks$cluster, breaks =c(0,1.5,2.5,3.5,4), labels=c("symmetry1", "symmetry2", "symmetry3", "symmetry4"), include.lowest = TRUE, right = FALSE)
+
+kf<-kmeans(breast_cancer$fractal_dimension_mean, 5)
+fractal.disc<- cut(kf$cluster, breaks =c(0,1.5,2.5,3.5,4.5,5), labels=c("fractal1", "fractal2", "fractal3", "fractal4","fractal5"), include.lowest = TRUE, right = FALSE)
+
+data<-data.frame(radius.disc,texture.disc,perimeter.disc, area.disc,smooth.disc,compact.disc, concavity.disc,concavePoint.disc,symmetry.disc, fractal.disc, breast_cancer$diagnosis )
+
+
+```
+
+## Analyse des correspondances
+
+Nous effectuons une analyse des correspondances sur la nouvelle base de données discrétisée en considérant la variable "diagnosis" comme variable qualitative supplémentaire vue que le but ici est d'observer sa reesemblance avec d'autres variables. Ceci nous permettra aussi d'observer les facteurs qualitatifs qui influencent les différents groupes de la variable "diagnosis".
+
+
+
+```{r}
+res.mca = MCA(data,  quali.sup=11,  graph = FALSE)
+#L'histogramme de variabilité des dimensions
+barplot(res.mca$eig[,"percentage of variance"], ylab="Percentage of variance")
+```
+
+Sur l'histogramme des pourcentages de variance des différentes dimensions, on vois que le premier axe factoriel se distingue clairement des autres dimensions. Nous apporterons une attention particulière sur cette dimension. Nous explorerons dans la suite en détail  pour voir si cette dimension permet d'observer les deux grand groupes de l'étude: "M", "B". 
+
+```{r}
+#Représentation sur le premier plan factoriel les individus par groupe: "M", "B".
+plot.MCA(res.mca, choix = "ind", habillage = 11, invisible=c("var"))
+```
+
+En visualisant nos données sur le premier plan factoriel (voir figure ci-dessus),
+on peut remarquer que  les deux groupes occupent presque des positions différentes sur le premier axe factoriel. En effet, Les tumeurs malignes sont à droite de l'axe verticale, et les tumeurs bénignes sont à gauche. La dimension 1 caractérise donc au mieux la variabilité des deux groupes "M" et "B". Ce résultat est similaire à celui obtenu en ACP sur le premier axe.
+
+
+
+
+
+
+
+
+
+
+
+Nous allons représenter ci-dessous le graphe conjoint des variables et individus pour interpréter  les facteurs (des variables qualitatives) déterminants dans les groupes "B" et "M", ensuite nous représenterons le graphe des variables pour observer celles qui ressemblent à notre variable d'intérêt.
+
+```{r}
+plot.MCA(res.mca, invisible=c("ind"))
+plot.MCA(res.mca, choix = "var")
+title(main = "Graphe des variables")
+
+```
+
+Comme pour l'ACP, les diagrammes de l'ACM nous permettent de faire les analyses suivantes: 
+
+a) Nous remarquons que les tumeurs malignes ont des plus grosses valeurs sur les variables "concavity.disc", "compact.disc", "radius.disc", "concavePoint.disc" contrairement au groupe tumeurs bénignes;
+
+b) Les variables "perimeter.disc", "area_disc", "radius_disc", "concavity.disc", concavePoint.disc, "compact.disc"  ressemblent à la variable et "breast_cancer.diagnosis" sur le premier axe factoriel. Ce qui veux dire en d'autres termes que ces variables influence le plus dans l'explication de la variable "diagnosis".
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Conclusions
+Les méthodes que nous avons utilisé dans cette analyse de données ACP, LDA et ACM ont 
+été toutes dans le but de diagnostiquer un patient suivant qu'il ait une tumeur maligne ou bénigne. 
+
+l'AMC et l'APC ont donnée des résutats concordants, à savoir que le premier axe factoriel permettait au mieux de distinguer des patients appartenant à ces deux  groupes. Enfin nous avons appris de ces deux analyses que les variables "perimeter", "area", "radius", "concavity", "concavePoint" et "compact" contribuaient le mieux à la distinction des deux groupes.
+
+La méthode LDA nous a donné un modèle de classification linéaire des deux groupes "M" et "B" avec un taux d'exactitude de 93.82%. Nous avons constaté qu'il classait sur l'échantillon, mieux les tumeurs bénignes que les tumeurs maligne. Nous avons cependant noter que l'on pouvais bien déplacer la frontière en fonction de l'utilisation de ce modèle.
+
+# Annexes
+
+```{r}
+#Statistique descriptive sur les données
+summary(breast_cancer)
+```
+
+```{r}
+#Coefficients de la variable discriminante linéaire
+res_lda$scaling
+```
+
+
+
+```{r}
+#Description de l'APC sur le premier plan factoriel 
+dimdesc(res_pca, axes = c(1,2))
+```
+
+
+
+
